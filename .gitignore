@@ -1,2 +1,4 @@
 *.ttf
 bin/*
+.vscode/*
+.vscode

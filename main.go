@@ -23,21 +23,25 @@ func main() {
 	}
 	fmt.Printf("81 bytes: %s\n", string(data))
 
-	puz := flattenPuzzle(files.Search(files.Constrain(ParsePuzzle(data))))
+	parsedPuzzle := ParsePuzzle(data)
 
-	OutputPuzzle(data)
-	OutputPuzzle([]byte(puz))
-}
+	fullPuzzle := files.NewPuzzle(parsedPuzzle)
+	solution := fullPuzzle.Solve()
 
-func flattenPuzzle(grid map[string]string) string {
-	str := ""
-	for _, sqr := range files.GetSquares() {
-		if len(grid[sqr]) != 1 {
-			log.Fatal("unsolved")
-		}
-		str += grid[sqr]
+	OutputPuzzle([]byte(fullPuzzle.ToString()))
+	OutputPuzzle([]byte(solution.ToString()))
+
+	solved := fullPuzzle.IsSolution(solution)
+	Answer := "NO"
+	if solved {
+		Answer = "YES"
 	}
-	return str
+	fmt.Println("Solved? ", Answer)
+
+	newPuzzle, newSolution := files.GeneratePuzzle()
+	OutputPuzzle([]byte(newPuzzle.ToString()))
+	OutputPuzzle([]byte(newSolution.ToString()))
+
 }
 
 func OutputPuzzle(puzzle []byte) {

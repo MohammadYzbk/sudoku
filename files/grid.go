@@ -2,6 +2,8 @@ package files
 
 import (
 	"fmt"
+	"log"
+	"math/rand"
 	"strings"
 )
 
@@ -11,6 +13,127 @@ const (
 	cols   = Digits
 )
 
+type puzzle struct {
+	Peers map[string][]string // For each square, provide all the squares at its row, column, and box.
+	// Units are a row, a column, or box. Anything that must have values strictly 1-9.
+	allUnits [][]string            // All units in the puzzle.
+	Units    map[string][][]string // For each square, provide a list of every unit it belongs to.
+	// Units can be a row, a column, or box. Anything that must have values strictly 1-9.
+	Squares []string           // List of all the squares in the puzzle.
+	Grid    *map[string]string // puzzle itself
+}
+
+func NewPuzzle(p map[string]string) puzzle {
+	var squares = GetSquares()
+	var allUnits, units = generateAllUnits()
+	var peers = generatePeers()
+	var grid = defaultDigitSet()
+	for key, val := range p {
+		grid[key] = val
+	}
+
+	return puzzle{
+		Squares:  squares,
+		Units:    units,
+		allUnits: allUnits,
+		Peers:    peers,
+		Grid:     &grid,
+	}
+}
+
+func GeneratePuzzle() (Grid, Grid) {
+	puzzleSeed := map[string]string{}
+	pool := make([]string, len(squares))
+	copy(pool, squares)
+	rand.Shuffle(len(pool), func(i, j int) {
+		pool[i], pool[j] = pool[j], pool[i]
+	})
+
+	i := 0
+	for ; i < 9; i++ {
+		digit := string(Digits[i])
+		puzzleSeed[pool[i]] = digit
+	}
+
+	puzzle := NewPuzzle(puzzleSeed)
+	for len(msearch(constrain(*puzzle.Grid))) != 1 {
+		square := pool[i]
+		options := (*puzzle.Grid)[square]
+		if len(options) == 0 {
+			break
+		}
+		randomOption := rand.Intn(len(options))
+		fill(*puzzle.Grid, square, string(options[randomOption]))
+		i++
+	}
+	return *puzzle.Grid, search(constrain(*puzzle.Grid))
+}
+
+func (p puzzle) IsSolution(solution map[string]string) bool {
+	if p.Grid == nil {
+		log.Fatal("grid is nil")
+	}
+	containsAll := true
+	for position, val := range solution {
+		if !contains((*p.Grid)[position], val) {
+			containsAll = false
+			break
+		}
+	}
+
+	isValid := true
+	for _, unit := range p.allUnits {
+		if !isValid {
+			break
+		}
+		solutionForUnit := ""
+		for _, sqr := range unit {
+			solutionForUnit += solution[sqr]
+		}
+		for _, num := range Digits {
+			str := string(num)
+			if !contains(solutionForUnit, str) {
+				isValid = false
+				break
+			}
+		}
+	}
+
+	return len(solution) != 0 && containsAll && isValid
+}
+
+type Grid map[string]string
+
+func (s Grid) ToString() string {
+	return flattenPuzzle(s)
+}
+
+func (p puzzle) Solve() Grid {
+	if p.Grid == nil {
+		log.Fatal("Grid is nil")
+	}
+	return search(constrain(*p.Grid))
+}
+
+func (p puzzle) ToString() string {
+	if p.Grid == nil {
+		log.Fatal("Grid is nil")
+	}
+	return flattenPuzzle(*p.Grid)
+}
+
+func flattenPuzzle(grid map[string]string) string {
+	str := ""
+	for _, sqr := range GetSquares() {
+		if len(grid[sqr]) != 1 {
+			str += "-"
+			continue
+		}
+		str += grid[sqr]
+	}
+	return str
+}
+
 var squares = cross(rows, cols)
 var allUnits, units = generateAllUnits()
 var peers = generatePeers()
@@ -18,13 +141,6 @@ var peers = generatePeers()
 func GetSquares() []string {
 	return cross(rows, cols)
 }
-
-// squares   = cross(rows, cols)
-// Grid      = Dict[Square, DigitSet] # E.g. {'A9': '123', ...}
-// all_boxes = [cross(rs, cs)  for rs in ('ABC','DEF','GHI') for cs in ('123','456','789')]
-// all_units = [cross(rows, c) for c in cols] + [cross(r, cols) for r in rows] + all_boxes
-// units     = {s: tuple(u for u in all_units if s in u) for s in squares}
-// peers     = {s: set().union(*units[s]) - {s} for s in squares}
 
 func defaultDigitSet() map[string]string {
 	digitSet := map[string]string{}
@@ -43,18 +159,6 @@ func cross(A string, B string) []string {
 	}
 	return product
 }
-
-// func generateAllBoxes() [][]string {
-// 	product := [][]string{}
-// 	rs := []string{"ABC", "DEF", "GHI"}
-// 	cs := []string{"123", "456", "789"}
-// 	for _, row := range rs {
-// 		for _, col := range cs {
-// 			product = append(product, cross(row, col))
-// 		}
-// 	}
-// 	return product
-// }
 
 func generateAllUnits() ([][]string, map[string][][]string) {
 	product := [][]string{}
@@ -107,36 +211,6 @@ func generatePeers() map[string][]string {
 	return product
 }
 
-func isSolution(solution, puzzle map[string]string) bool {
-	containsAll := true
-	for position, val := range solution {
-		if !contains(puzzle[position], val) {
-			containsAll = false
-			break
-		}
-	}
-
-	isValid := true
-	for _, unit := range allUnits {
-		if !isValid {
-			break
-		}
-		solutionForUnit := ""
-		for _, sqr := range unit {
-			solutionForUnit += solution[sqr]
-		}
-		for _, num := range Digits {
-			str := string(num)
-			if !contains(solutionForUnit, str) {
-				isValid = false
-				break
-			}
-		}
-	}
-
-	return len(solution) != 0 && containsAll && isValid
-}
-
 func contains(s string, t string) bool {
 	if len(t) > 1 {
 		return false
@@ -150,15 +224,7 @@ func contains(s string, t string) bool {
 	return false
 }
 
-// def constrain(grid) -> Grid:
-//     "Propagate constraints on a copy of grid to yield a new constrained Grid."
-//     result: Grid = {s: digits for s in squares}
-//     for s in grid:
-//         if len(grid[s]) == 1:
-//             fill(result, s,  grid[s])
-//     return result
-
-func Constrain(grid map[string]string) map[string]string {
+func constrain(grid map[string]string) map[string]string {
 	result := defaultDigitSet()
 	for sqr := range grid {
 		if len(grid[sqr]) == 1 {
@@ -167,13 +233,6 @@ func Constrain(grid map[string]string) map[string]string {
 	}
 	return result
 }
-
-// def fill(grid: Grid, s: Square, d: Digit) -> Optional[Grid]:
-//     """Eliminate all the digits except d from grid[s]."""
-//     if grid[s] == d or all(eliminate(grid, s, d2) for d2 in grid[s] if d2 != d):
-//         return grid
-//     else:
-//         return None
 
 func fill(grid map[string]string, sqr string, digit string) map[string]string {
 	if grid[sqr] == digit {
@@ -190,25 +249,6 @@ func fill(grid map[string]string, sqr string, digit string) map[string]string {
 
 	return grid
 }
-
-// def eliminate(grid: Grid, s: Square, d: Digit) -> Optional[Grid]:
-//     """Eliminate d from grid[s]; implement the two constraint propagation strategies."""
-//     if d not in grid[s]:
-//         return grid        ## Already eliminated
-//     grid[s] = grid[s].replace(d, '')
-//     if not grid[s]:
-//         return None        ## None: no legal digit left
-//     elif len(grid[s]) == 1:
-//         # 1. If a square has only one possible digit, then eliminate that digit as a possibility for each of the square's peers.
-//         d2 = grid[s]
-//         if not all(eliminate(grid, s2, d2) for s2 in peers[s]):
-//             return None    ## None: can't eliminate d2 from some square
-//     for u in units[s]:
-//         dplaces = [s for s in u if d in grid[s]]
-//         # 2. If a unit has only one possible square that can hold a digit, then fill the square with the digit.
-//         if not dplaces or (len(dplaces) == 1 and not fill(grid, dplaces[0], d)):
-//             return None    ## None: no place in u for d
-//     return grid
 
 func eliminate(grid map[string]string, sqr string, digitToDie string) map[string]string {
 	if !contains(grid[sqr], digitToDie) {
@@ -246,21 +286,7 @@ func eliminate(grid map[string]string, sqr string, digitToDie string) map[string
 	return grid
 }
 
-// def search(grid) -> Grid:
-//     "Depth-first search with constraint propagation to find a solution."
-//     if grid is None:
-//         return None
-//     s = min((s for s in squares if len(grid[s]) > 1),
-//             default=None, key=lambda s: len(grid[s]))
-//     if s is None: # No squares with multiple possibilities; the search has succeeded
-//         return grid
-//     for d in grid[s]:
-//         solution = search(fill(grid.copy(), s, d))
-//         if solution:
-//             return solution
-//     return None
-
-func Search(grid map[string]string) map[string]string {
+func search(grid map[string]string) map[string]string {
 	if len(grid) == 0 {
 		return map[string]string{}
 	}
@@ -284,10 +310,44 @@ func Search(grid map[string]string) map[string]string {
 		for key, value := range grid {
 			newGrid[key] = value
 		}
-		solution := Search(fill(newGrid, minS, string(digit)))
+		solution := search(fill(newGrid, minS, string(digit)))
 		if len(solution) != 0 {
 			return solution
 		}
 	}
 	return map[string]string{}
+}
+
+func msearch(grid map[string]string) []Grid {
+	if len(grid) == 0 {
+		return []Grid{}
+	}
+	minS := ""
+	minVal := 10
+	for _, sqr := range squares {
+		if len(grid[sqr]) > 1 {
+			if minVal > len(grid[sqr]) {
+				minVal = len(grid[sqr])
+				minS = sqr
+			}
+		}
+	}
+
+	if minS == "" {
+		return []Grid{}
+	}
+
+	finalSolutions := []Grid{}
+	for _, digit := range grid[minS] {
+		newGrid := make(map[string]string, len(grid))
+		for key, value := range grid {
+			newGrid[key] = value
+		}
+		solution := search(fill(newGrid, minS, string(digit)))
+		if len(solution) != 0 && NewPuzzle(grid).IsSolution(solution) {
+			finalSolutions = append(finalSolutions, solution)
+		}
+	}
+
+	return finalSolutions
 }

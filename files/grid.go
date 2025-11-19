@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	Digits = "123456789"
-	rows   = "ABCDEFGHI"
-	cols   = Digits
+	puzzleLength = 81
+	Digits       = "123456789"
+	rows         = "ABCDEFGHI"
+	cols         = Digits
 )
 
 type puzzle struct {
@@ -24,9 +25,6 @@ type puzzle struct {
 }
 
 func NewPuzzle(p map[string]string) puzzle {
-	var squares = GetSquares()
-	var allUnits, units = generateAllUnits()
-	var peers = generatePeers()
 	var grid = defaultDigitSet()
 	for key, val := range p {
 		grid[key] = val
@@ -55,18 +53,29 @@ func GeneratePuzzle() (Grid, Grid) {
 		puzzleSeed[pool[i]] = digit
 	}
 
-	puzzle := NewPuzzle(puzzleSeed)
-	for len(msearch(constrain(*puzzle.Grid))) != 1 {
+	generatedPuzzle := NewPuzzle(puzzleSeed)
+	*generatedPuzzle.Grid = search(constrain(*generatedPuzzle.Grid))
+	for i < puzzleLength {
 		square := pool[i]
-		options := (*puzzle.Grid)[square]
-		if len(options) == 0 {
-			break
+		newGrid := make(map[string]string, len(*generatedPuzzle.Grid))
+		for key, value := range *generatedPuzzle.Grid {
+			newGrid[key] = value
 		}
-		randomOption := rand.Intn(len(options))
-		fill(*puzzle.Grid, square, string(options[randomOption]))
+		dtd := newGrid[square]
+		delete(newGrid, square)
+		newGrid = eliminate(newGrid, square, dtd)
+		numberOfSolutions := msearchWithLimit(constrain(newGrid), 2)
 		i++
+		if numberOfSolutions == 1 {
+			*generatedPuzzle.Grid = newGrid
+		}
 	}
-	return *puzzle.Grid, search(constrain(*puzzle.Grid))
+
+	return *generatedPuzzle.Grid, search(constrain(*generatedPuzzle.Grid))
+}
+
+func Enumarate(grid Grid) int {
+	return msearch(constrain(grid))
 }
 
 func (p puzzle) IsSolution(solution map[string]string) bool {
@@ -108,6 +117,10 @@ func (s Grid) ToString() string {
 	return flattenPuzzle(s)
 }
 
+func (s Grid) ToVerboseString() string {
+	return flattenCandidatePuzzle(constrain(s))
+}
+
 func (p puzzle) Solve() Grid {
 	if p.Grid == nil {
 		log.Fatal("Grid is nil")
@@ -127,6 +140,18 @@ func flattenPuzzle(grid map[string]string) string {
 	for _, sqr := range GetSquares() {
 		if len(grid[sqr]) != 1 {
 			str += "-"
+			continue
+		}
+		str += grid[sqr]
+	}
+	return str
+}
+
+func flattenCandidatePuzzle(grid map[string]string) string {
+	str := ""
+	for _, sqr := range GetSquares() {
+		if len(grid[sqr]) != 1 {
+			str += fmt.Sprintf("{%s}", grid[sqr])
 			continue
 		}
 		str += grid[sqr]
@@ -318,9 +343,9 @@ func search(grid map[string]string) map[string]string {
 	return map[string]string{}
 }
 
-func msearch(grid map[string]string) []Grid {
+func msearch(grid map[string]string) int {
 	if len(grid) == 0 {
-		return []Grid{}
+		return 0
 	}
 	minS := ""
 	minVal := 10
@@ -334,20 +359,53 @@ func msearch(grid map[string]string) []Grid {
 	}
 
 	if minS == "" {
-		return []Grid{}
+		return 1
 	}
 
-	finalSolutions := []Grid{}
+	counter := 0
 	for _, digit := range grid[minS] {
 		newGrid := make(map[string]string, len(grid))
 		for key, value := range grid {
 			newGrid[key] = value
 		}
-		solution := search(fill(newGrid, minS, string(digit)))
-		if len(solution) != 0 && NewPuzzle(grid).IsSolution(solution) {
-			finalSolutions = append(finalSolutions, solution)
+		solution := msearch(fill(newGrid, minS, string(digit)))
+		counter += solution
+	}
+
+	return counter
+}
+
+func msearchWithLimit(grid map[string]string, limit int) int {
+	if len(grid) == 0 {
+		return 0
+	}
+	minS := ""
+	minVal := 10
+	for _, sqr := range squares {
+		if len(grid[sqr]) > 1 {
+			if minVal > len(grid[sqr]) {
+				minVal = len(grid[sqr])
+				minS = sqr
+			}
 		}
 	}
 
-	return finalSolutions
+	if minS == "" {
+		return 1
+	}
+
+	counter := 0
+	for _, digit := range grid[minS] {
+		newGrid := make(map[string]string, len(grid))
+		for key, value := range grid {
+			newGrid[key] = value
+		}
+		solution := msearchWithLimit(fill(newGrid, minS, string(digit)), limit)
+		counter += solution
+		if counter >= limit {
+			return counter
+		}
+	}
+
+	return counter
 }

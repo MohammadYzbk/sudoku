@@ -37,9 +37,12 @@ func main() {
 		Answer = "YES"
 	}
 	fmt.Println("Solved? ", Answer)
+	fmt.Println("Number of solutions: ", files.Enumarate(parsedPuzzle))
 
 	newPuzzle, newSolution := files.GeneratePuzzle()
+	fmt.Println(newPuzzle.ToString())
 	OutputPuzzle([]byte(newPuzzle.ToString()))
+	fmt.Println(newPuzzle.ToVerboseString())
 	OutputPuzzle([]byte(newSolution.ToString()))
 
 }

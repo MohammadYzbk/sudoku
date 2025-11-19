@@ -1,3 +1,3 @@
-#bin/bash
+#!/bin/bash
 go build -o bin/exec main.go
-sudo ./bin/exec
+./bin/exec
